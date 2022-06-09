@@ -146,19 +146,6 @@ client.on('ready', () => {
     if (message.content == '$resume') {
       player.unpause()
     }
-    if (message.content == '$list') {
-      let listContent = mp3Files
-      .map((file, idx) => `${(idx + 1).toString()}. ${file}`)
-      .join('\n')
-      if(listContent.length)
-        message.channel.send(listContent)
-      else
-        message.channel.send('No file found!')
-    }
-    if (message.content == '$status') {
-      console.log("Connection status:", connection.state.status)
-      console.log("Player status:", player.state.status)
-    }
     if (message.content == '$stop') {
       player.stop()
       if (connection) connection.destroy()
