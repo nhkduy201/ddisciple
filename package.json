@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon index.js"
+    "start":"node index.js",
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
@@ -15,11 +16,15 @@
     "@discordjs/opus": "^0.5.3",
     "@discordjs/voice": "^0.9.0",
     "discord.js": "^13.7.0",
+    "dotenv": "^16.0.1",
     "got": "^12.1.0",
     "libsodium-wrappers": "^0.7.10",
     "soundoftext-js": "^1.0.2"
   },
   "devDependencies": {
     "nodemon": "^2.0.16"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
