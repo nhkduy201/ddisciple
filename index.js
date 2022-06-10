@@ -128,7 +128,7 @@ client.on('ready', () => {
 })
   .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
   .on('messageCreate', async message => {
-      if (checkCmd(message, '$pl')) {
+      if (checkCmd(message, '$$pl')) {
         let plPara = cleanCmdParas(message)
         if(!plPara.length) {
           sendInValid(message)
@@ -138,12 +138,11 @@ client.on('ready', () => {
           initConnection()
         }
         got(`https://www.youtube.com/results?search_query=${plPara.replaceAll(' ', '+')}`).then(res => {
-          const firPnt = "{\"videoId"
+          const firPnt = "\"videoRenderer\""
           const secPnt = ",\"longBylineText"
-          const start = res.body.indexOf(firPnt)
-          const end = res.body.indexOf(secPnt)
+          const start = res.body.indexOf(firPnt) + firPnt.length + 1;
+          const end = res.body.indexOf(secPnt, res.body.indexOf(firPnt))
           const data = JSON.parse(res.body.substring(start, end) + '}')
-          // console.log(data)
           const vidUrl = `https://www.youtube.com/watch?v=${data.videoId}`
           let plEmbed = new MessageEmbed()
           plEmbed.setDescription(`**[${data.title.runs ? data.title.runs[0].text :data.title.simpleText}](${vidUrl})**`)
