@@ -13,7 +13,7 @@ const client = new Client({
      Intents.FLAGS.GUILD_MESSAGE_REACTIONS, Intents.FLAGS.GUILD_VOICE_STATES],
   partials: ['MESSAGE', 'CHANNEL', 'REACTION']
 })
-let myUsm = usm.setToken(process.env.MY_TOKEN);
+let myUsm = usm.setToken(process.env.MY_TOKEN)
 let player = createAudioPlayer()
 let resource
 let connection
@@ -22,7 +22,7 @@ let preVolume = 1
 let queue = new Queue()
 
 player.on('error',(err) => {
-  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(err.message);
+  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(err.message)
 })
 
 player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
@@ -143,10 +143,12 @@ client.on('ready', () => {
           const start = res.body.indexOf(firPnt)
           const end = res.body.indexOf(secPnt)
           const data = JSON.parse(res.body.substring(start, end) + '}')
+          // console.log(data)
           const vidUrl = `https://www.youtube.com/watch?v=${data.videoId}`
-          const plEmbed = new MessageEmbed()
-          plEmbed.setDescription(`**[${data.title.runs[0].text}](${vidUrl})**`)
-          plEmbed.setImage(data.thumbnail.thumbnails[1].url)
+          let plEmbed = new MessageEmbed()
+          plEmbed.setDescription(`**[${data.title.runs ? data.title.runs[0].text :data.title.simpleText}](${vidUrl})**`)
+          plEmbed.setImage(data.thumbnail.thumbnails.find(thum => thum.width = '720').url
+          || data.thumbnail.thumbnails[0].url)
           sendPlayInfo(message, {embeds: [plEmbed]})
           queue.enqueue(ytdl(`${vidUrl}`, {quality: "lowestaudio",filter: 'audioonly'}))
           play()
