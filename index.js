@@ -1,3 +1,4 @@
+import runServer from './server.js'
 import usm from './user-send-message.js'
 import Queue from './queue.js'
 import got from 'got'
@@ -19,6 +20,10 @@ let connection
 let playMessage
 let preVolume = 1
 let queue = new Queue()
+
+player.on('error',(err) => {
+  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(err.message);
+})
 
 player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
   resource = undefined
@@ -201,3 +206,5 @@ client.on('ready', () => {
       }
   })
   .login(process.env.BOT_TOKEN)
+
+runServer()
