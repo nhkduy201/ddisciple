@@ -127,7 +127,7 @@ const handleSpeak = async (message, playPara) => {
 
 const playYt = (data, message) => {
   let plEmbed = new MessageEmbed()
-  plEmbed.setDescription(data.title)
+  plEmbed.setDescription(`**[${data.title}](${data.url})**`)
   plEmbed.setImage(data.image)
   sendPlayInfo(message, {embeds: [plEmbed]})
   queue.enqueue(ytdl(`${data.url}`, {quality: "lowestaudio",filter: 'audioonly'}))
@@ -144,7 +144,7 @@ const playSearch = (message, plPara) => {
     let data = {url: `https://www.youtube.com/watch?v=${rawData.videoId}`}
     data = {
       ...data, 
-      title: `**[${rawData.title.runs ? rawData.title.runs[0].text : rawData.title.simpleText}](${data.url})**`,
+      title: rawData.title.runs ? rawData.title.runs[0].text : rawData.title.simpleText,
       image: rawData.thumbnail.thumbnails[rawData.thumbnail.thumbnails.length - 1].url
     }
     playYt(data, message)
@@ -183,8 +183,10 @@ client.on('ready', () => {
         }
         if (!connection || connection.state.status === 'destroyed')
           initConnection()
-        if(plPara.includes('youtube.com/watch?v=')) 
-          playUrl(message, plPara)
+        if(plPara.includes('youtube.com/watch?v=')) {
+            playUrl(message, plPara)
+            message.delete()
+        }
         else
           playSearch(message, plPara)
       }
