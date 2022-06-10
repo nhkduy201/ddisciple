@@ -1,3 +1,4 @@
+import fs from 'fs'
 import runServer from './server.js'
 import usm from './user-send-message.js'
 import Queue from './queue.js'
@@ -117,6 +118,45 @@ const handleSpeak = async (message, playPara) => {
   })
 }
 
+const playYt = (data, message) => {
+  let plEmbed = new MessageEmbed()
+  plEmbed.setDescription(data.title)
+  plEmbed.setImage(data.image)
+  sendPlayInfo(message, {embeds: [plEmbed]})
+  queue.enqueue(ytdl(`${data.url}`, {quality: "lowestaudio",filter: 'audioonly'}))
+  play()
+}
+
+const playSearch = (message, plPara) => {
+  got(`https://www.youtube.com/results?search_query=${plPara.replaceAll(' ', '+')}`).then(res => {
+    const firPnt = "\"videoRenderer\""
+    const secPnt = ",\"longBylineText"
+    const start = res.body.indexOf(firPnt) + firPnt.length + 1
+    const end = res.body.indexOf(secPnt, start)
+    const rawData = JSON.parse(res.body.substring(start, end) + '}')
+    let data = {url: `https://www.youtube.com/watch?v=${rawData.videoId}`}
+    data = {
+      ...data, 
+      title: `**[${rawData.title.runs ? rawData.title.runs[0].text : rawData.title.simpleText}](${data.url})**`,
+      image: rawData.thumbnail.thumbnails[rawData.thumbnail.thumbnails.length - 1].url
+    }
+    playYt(data, message)
+  })
+}
+
+const playUrl = (message, plPara) => {
+  ytdl.getInfo(plPara).then(data => {
+    data = {
+      url: data.videoDetails.video_url,
+      title: data.videoDetails.title,
+      image: data.videoDetails.thumbnails[
+        data.videoDetails.thumbnails.length - 1
+      ].url
+    }
+    playYt(data, message)
+  })
+}
+
 const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
 
 const checkCmd = (message, cmd) => message.content.startsWith(cmd + ' ') || message.content == cmd
@@ -128,30 +168,18 @@ client.on('ready', () => {
 })
   .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
   .on('messageCreate', async message => {
-      if (checkCmd(message, '$$pl')) {
+      if (checkCmd(message, '$pl')) {
         let plPara = cleanCmdParas(message)
         if(!plPara.length) {
           sendInValid(message)
           return
         }
-        if (!connection || connection.state.status === 'destroyed') {
+        if (!connection || connection.state.status === 'destroyed')
           initConnection()
-        }
-        got(`https://www.youtube.com/results?search_query=${plPara.replaceAll(' ', '+')}`).then(res => {
-          const firPnt = "\"videoRenderer\""
-          const secPnt = ",\"longBylineText"
-          const start = res.body.indexOf(firPnt) + firPnt.length + 1;
-          const end = res.body.indexOf(secPnt, res.body.indexOf(firPnt))
-          const data = JSON.parse(res.body.substring(start, end) + '}')
-          const vidUrl = `https://www.youtube.com/watch?v=${data.videoId}`
-          let plEmbed = new MessageEmbed()
-          plEmbed.setDescription(`**[${data.title.runs ? data.title.runs[0].text :data.title.simpleText}](${vidUrl})**`)
-          plEmbed.setImage(data.thumbnail.thumbnails.find(thum => thum.width = '720').url
-          || data.thumbnail.thumbnails[0].url)
-          sendPlayInfo(message, {embeds: [plEmbed]})
-          queue.enqueue(ytdl(`${vidUrl}`, {quality: "lowestaudio",filter: 'audioonly'}))
-          play()
-        })
+        if(plPara.includes('youtube.com/watch?v=')) 
+          playUrl(message, plPara)
+        else
+          playSearch(message, plPara)
       }
       if (checkCmd(message, '$mp3')) {
         let mp3Para = cleanCmdParas(message)
@@ -159,9 +187,8 @@ client.on('ready', () => {
           sendInValid(message)
           return
         }
-        if (!connection || connection.state.status === 'destroyed') {
+        if (!connection || connection.state.status === 'destroyed')
           initConnection()
-        }
         if(mp3Para.startsWith('http') && mp3Para.endsWith('.mp3'))
           handlePlayMp3(message, mp3Para)
         else
@@ -174,9 +201,8 @@ client.on('ready', () => {
           sendInValid(message)
           return
         }
-        if (!connection || connection.state.status === 'destroyed') {
+        if (!connection || connection.state.status === 'destroyed')
           initConnection()
-        }
         await handleSpeak(message, spkPara)
         play()
       }
