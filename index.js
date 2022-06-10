@@ -31,10 +31,17 @@ player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
   play()
 })
 
+const stop = () => {
+  player.stop()
+  if (connection) connection.destroy()
+}
+
 const play = () => {
   if(player.state.status === AudioPlayerStatus.Idle && !queue.isEmpty) {
     resource = createAudioResource(queue.dequeue(), { inlineVolume: true })
     player.play(resource)
+  } else if(player.state.status === AudioPlayerStatus.Idle) {
+    stop()
   }
 }
 
@@ -215,8 +222,7 @@ client.on('ready', () => {
       if (checkCmd(message, '$res'))
         player.unpause()
       if (checkCmd(message, '$stp')) {
-        player.stop()
-        if (connection) connection.destroy()
+        stop()
       }
       if (checkCmd(message, '$help')) {
         const helpEmbed = new MessageEmbed()
