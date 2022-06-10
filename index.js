@@ -137,7 +137,7 @@ client.on('ready', () => {
         if (!connection || connection.state.status === 'destroyed') {
           initConnection()
         }
-        got(`https://www.youtube.com/results?search_query=${plPara.replace(' ', '+')}`).then(res => {
+        got(`https://www.youtube.com/results?search_query=${plPara.replaceAll(' ', '+')}`).then(res => {
           const firPnt = "{\"videoId"
           const secPnt = ",\"longBylineText"
           const start = res.body.indexOf(firPnt)
