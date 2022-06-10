@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start":"node index.js",
+    "start": "node index.js",
     "dev": "nodemon index.js"
   },
   "keywords": [],
@@ -19,7 +19,8 @@
     "dotenv": "^16.0.1",
     "got": "^12.1.0",
     "libsodium-wrappers": "^0.7.10",
-    "soundoftext-js": "^1.0.2"
+    "soundoftext-js": "^1.0.2",
+    "ytdl-core": "^4.11.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.16"

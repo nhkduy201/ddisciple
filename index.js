@@ -1,19 +1,19 @@
-import Queue from './queue.js';
-import fs from 'fs'
+import usm from './user-send-message.js'
+import Queue from './queue.js'
 import got from 'got'
 import sotClient from 'soundoftext-js'
-import { Client, Intents } from 'discord.js'
+import { Client, Intents, MessageEmbed } from 'discord.js'
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice'
 import dotenv from 'dotenv'
+import ytdl from 'ytdl-core'
 dotenv.config()
 const client = new Client({
   intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES,
      Intents.FLAGS.GUILD_MESSAGE_REACTIONS, Intents.FLAGS.GUILD_VOICE_STATES],
   partials: ['MESSAGE', 'CHANNEL', 'REACTION']
 })
-
+let myUsm = usm.setToken(process.env.MY_TOKEN);
 let player = createAudioPlayer()
-let mp3Files
 let resource
 let connection
 let playMessage
@@ -36,14 +36,12 @@ const initConnection = () => {
   connection = joinVoiceChannel({
     channelId: process.env.VOICE_CHANNEL_ID,
     guildId: process.env.SERVER_ID,
-    adapterCreator: client.channels.cache.find(channel => channel.id === process.env.VOICE_CHANNEL_ID).guild.voiceAdapterCreator,
+    adapterCreator: client.channels.cache.get(process.env.VOICE_CHANNEL_ID).guild.voiceAdapterCreator,
   })
   connection.subscribe(player)
 }
 
 const sendInValid = (message) => message.channel.send('Invalid command!')
-const sendOutOfRange = (message) => message.channel.send('Number must be in range!')
-const sendNoFile = (message) => message.channel.send('There\'s no files!')
 
 const volumeControl = (reaction, user) => {
   if (resource && resource.started && !resource.ended && playMessage
@@ -71,8 +69,8 @@ const volumeControl = (reaction, user) => {
   }
 }
 
-const sendPlayInfo = (message, whatPlaying) => {
-  message.channel.send('Playing: ' + whatPlaying).then(afterMess => {
+const sendPlayInfo = (message, embed) => {
+  message.channel.send(embed).then(afterMess => {
     playMessage = afterMess
     playMessage.react('🔊')
     playMessage.react('🔉')
@@ -89,11 +87,11 @@ const handleSpeak = async (message, playPara) => {
   playPara = playPara.replace(new RegExp(process.env.SECRET_1, 'g'), decodeURI(process.env.SECRET_2))
   .replace(new RegExp(process.env.SECRET_3, 'g'), decodeURI(process.env.SECRET_4))
   sendPlayInfo(message, 'Speaking...')
-  let urlPromises = [];
+  let urlPromises = []
   let i = 0
   let j
   while(true) {
-    j = i + 100
+    j = i + 200
     if(j >= playPara.length) {
       urlPromises.push(sotClient.sounds.create({ text: playPara.substring(i), voice: 'vi-VN' }))
       break
@@ -108,47 +106,98 @@ const handleSpeak = async (message, playPara) => {
   }
   Promise.all(urlPromises).then(urls => {
     for(const url of urls) {
-      queue.enqueue(got.stream(url));
+      queue.enqueue(got.stream(url))
     }
-    play();
+    play()
   })
 }
 
-const bulkDelete = (channelId) => setInterval(() => client.channels.cache.find(channel => channel.id == channelId).bulkDelete(100), 2000)
+const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
+
+const checkCmd = (message, cmd) => message.content.startsWith(cmd + ' ') || message.content == cmd
+
+const bulkDelete = channelId => setInterval(() => client.channels.cache.get(channelId).bulkDelete(100), 2000)
 
 client.on('ready', () => {
   console.log('client is ready')
 })
   .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
   .on('messageCreate', async message => {
-    if (message.content.startsWith('$play') && message.author.id === '487623378514214925') {
-      let playPara = message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
-      if(!playPara.length) {
-        sendInValid(message)
-        return
+      if (checkCmd(message, '$pl')) {
+        let plPara = cleanCmdParas(message)
+        if(!plPara.length) {
+          sendInValid(message)
+          return
+        }
+        if (!connection || connection.state.status === 'destroyed') {
+          initConnection()
+        }
+        got(`https://www.youtube.com/results?search_query=${plPara.replace(' ', '+')}`).then(res => {
+          const firPnt = "{\"videoId"
+          const secPnt = ",\"longBylineText"
+          const start = res.body.indexOf(firPnt)
+          const end = res.body.indexOf(secPnt)
+          const data = JSON.parse(res.body.substring(start, end) + '}')
+          const vidUrl = `https://www.youtube.com/watch?v=${data.videoId}`
+          const plEmbed = new MessageEmbed()
+          plEmbed.setDescription(`**[${data.title.runs[0].text}](${vidUrl})**`)
+          plEmbed.setImage(data.thumbnail.thumbnails[1].url)
+          sendPlayInfo(message, {embeds: [plEmbed]})
+          queue.enqueue(ytdl(`${vidUrl}`, {quality: "lowestaudio",filter: 'audioonly'}))
+          play()
+        })
       }
-      // check if number, play mp3
-      let fileNumber = parseInt(playPara, 10)
-      let playObj = {}
-      if (!connection || connection.state.status === 'destroyed') {
-        initConnection()
+      if (checkCmd(message, '$mp3')) {
+        let mp3Para = cleanCmdParas(message)
+        if(!mp3Para.length) {
+          sendInValid(message)
+          return
+        }
+        if (!connection || connection.state.status === 'destroyed') {
+          initConnection()
+        }
+        if(mp3Para.startsWith('http') && mp3Para.endsWith('.mp3'))
+          handlePlayMp3(message, mp3Para)
+        else
+          sendInValid(message)
+        play()
       }
-      if(playPara.startsWith('http') && playPara.endsWith('.mp3')) {
-        handlePlayMp3(message, playPara)
-      } else {
-        await handleSpeak(message, playPara)
+      if (checkCmd(message, '$spk')) {
+        let spkPara = cleanCmdParas(message)
+        if(!spkPara.length) {
+          sendInValid(message)
+          return
+        }
+        if (!connection || connection.state.status === 'destroyed') {
+          initConnection()
+        }
+        await handleSpeak(message, spkPara)
+        play()
       }
-      play()
-    }
-    if (message.content == '$pause') {
-      player.pause()
-    }
-    if (message.content == '$resume') {
-      player.unpause()
-    }
-    if (message.content == '$stop') {
-      player.stop()
-      if (connection) connection.destroy()
-    }
+      if(checkCmd(message, '$skp')) {
+        player.stop()
+        play()
+      }
+      if (checkCmd(message, '$pau')) 
+        player.pause()
+      if (checkCmd(message, '$res'))
+        player.unpause()
+      if (checkCmd(message, '$stp')) {
+        player.stop()
+        if (connection) connection.destroy()
+      }
+      if (checkCmd(message, '$help')) {
+        const helpEmbed = new MessageEmbed()
+        helpEmbed.setDescription(`
+        $pl ***keyword***: search youtube and play
+        $mp3 ***url***: play mp3 from ***url***
+        $spk ***paragraph***: speak it for you
+        $skp: skip
+        $pau: pause
+        $res: resume
+        $stp: bot leave
+        `)
+        message.channel.send({embeds: [helpEmbed]})
+      }
   })
   .login(process.env.BOT_TOKEN)
