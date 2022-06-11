@@ -28,6 +28,6 @@
     "nodemon": "^2.0.16"
   },
   "engines": {
-    "node": "18.x"
+    "node": "17.x"
   }
 }
