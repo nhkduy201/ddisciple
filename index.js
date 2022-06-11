@@ -117,6 +117,7 @@ const handleSpeak = async (message, playPara) => {
     urlPromises.push(sotClient.sounds.create({ text: playPara.substring(i, j), voice: 'vi-VN' }))
     i = j + 1
   }
+  // fix
   Promise.all(urlPromises).then(urls => {
     for(const url of urls) {
       queue.enqueue(got.stream(url))
@@ -185,7 +186,7 @@ client.on('ready', () => {
           initConnection()
         if(plPara.includes('youtube.com/watch?v=')) {
             playUrl(message, plPara)
-            message.delete()
+            // message.delete()
         }
         else
           playSearch(message, plPara)
