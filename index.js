@@ -229,12 +229,12 @@ client.on('ready', () => {
       if (checkCmd(message, '$help')) {
         const helpEmbed = new MessageEmbed()
         helpEmbed.setDescription(`
-        $pl ***keyword***: search youtube and play
+        $pl ***keyword***: search the ***keyword*** and play
         $mp3 ***url***: play mp3 from ***url***
-        $spk ***paragraph***: speak it for you
-        $skp: skip
-        $pau: pause
-        $res: resume
+        $spk ***paragraph***: google translator speak ***paragraph***
+        $skp: skip current track
+        $pau: pause current track
+        $res: resume current track
         $stp: bot leave
         `)
         message.channel.send({embeds: [helpEmbed]})
