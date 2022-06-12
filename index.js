@@ -46,11 +46,11 @@ const play = () => {
   }
 }
 
-const initConnection = () => {
+const initConnection = (message) => {
   connection = joinVoiceChannel({
-    channelId: process.env.VOICE_CHANNEL_ID,
-    guildId: process.env.SERVER_ID,
-    adapterCreator: client.channels.cache.get(process.env.VOICE_CHANNEL_ID).guild.voiceAdapterCreator,
+    channelId: message.member.voice.channel.id,
+    guildId: message.guild.id,
+    adapterCreator: message.guild.voiceAdapterCreator,
   })
   connection.subscribe(player)
 }
@@ -184,7 +184,7 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection()
+          initConnection(message)
         if(plPara.includes('youtube.com/watch?v=')) {
             playUrl(message, plPara)
             // message.delete()
@@ -199,7 +199,7 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection()
+          initConnection(message)
         if(mp3Para.startsWith('http') && mp3Para.endsWith('.mp3'))
           handlePlayMp3(message, mp3Para)
         else
@@ -214,7 +214,7 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection()
+          initConnection(message)
         await handleSpeak(message, spkPara)
         play()
       }
