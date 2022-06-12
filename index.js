@@ -23,7 +23,8 @@ let preVolume = 1
 let queue = new Queue()
 
 player.on('error',(err) => {
-  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(err.message)
+  console.log(err.resource.playStream)
+  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(JSON.stringify(err.resource.playStream))
 })
 
 player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
@@ -176,7 +177,7 @@ client.on('ready', () => {
 })
   .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
   .on('messageCreate', async message => {
-      if (checkCmd(message, '$pl')) {
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
         let plPara = cleanCmdParas(message)
         if(!plPara.length) {
           sendInValid(message)
@@ -191,7 +192,7 @@ client.on('ready', () => {
         else
           playSearch(message, plPara)
       }
-      if (checkCmd(message, '$mp3')) {
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
         let mp3Para = cleanCmdParas(message)
         if(!mp3Para.length) {
           sendInValid(message)
@@ -205,7 +206,8 @@ client.on('ready', () => {
           sendInValid(message)
         play()
       }
-      if (checkCmd(message, '$spk')) {
+      // TODO: fix first time, not play but get queued
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}spk`)) {
         let spkPara = cleanCmdParas(message)
         if(!spkPara.length) {
           sendInValid(message)
@@ -216,18 +218,18 @@ client.on('ready', () => {
         await handleSpeak(message, spkPara)
         play()
       }
-      if(checkCmd(message, '$skp')) {
+      if(checkCmd(message, `${process.env.COMMAND_PREFIX}skp`)) {
         player.stop()
         play()
       }
-      if (checkCmd(message, '$pau')) 
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pau`)) 
         player.pause()
-      if (checkCmd(message, '$res'))
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}res`))
         player.unpause()
-      if (checkCmd(message, '$stp')) {
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}stp`)) {
         stop()
       }
-      if (checkCmd(message, '$help')) {
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
         const helpEmbed = new MessageEmbed()
         helpEmbed.setDescription(`
         $pl ***keyword***: search the ***keyword*** and play
