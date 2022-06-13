@@ -181,7 +181,7 @@ const bulkDelete = channelId => setInterval(() => client.channels.cache.get(chan
 client.on('ready', () => {
   console.log('client is ready')
 })
-  .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
+  /* .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl) */
   .on('messageCreate', async message => {
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
         if(checkDiffVC(message)) return
