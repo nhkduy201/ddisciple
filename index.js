@@ -1,4 +1,4 @@
-import fs from 'fs'
+//TODO: do replay
 import runServer from './server.js'
 import usm from './user-send-message.js'
 import Queue from './queue.js'
@@ -39,7 +39,7 @@ const stop = () => {
 
 const play = () => {
   if(player.state.status === AudioPlayerStatus.Idle && !queue.isEmpty) {
-    resource = createAudioResource(queue.dequeue(), { inlineVolume: true })
+    resource = createAudioResource(queue.dequeue()/* , { inlineVolume: true } */)
     player.play(resource)
   } else if(player.state.status === AudioPlayerStatus.Idle) {
     stop()
@@ -57,7 +57,7 @@ const initConnection = (message) => {
 
 const sendInValid = (message) => message.channel.send('Invalid command!')
 
-const volumeControl = (reaction, user) => {
+/* const volumeControl = (reaction, user) => {
   if (resource && resource.started && !resource.ended && playMessage
     && user.id != client.user.id && reaction.message.id === playMessage.id) {
     if (reaction.emoji.name === '🔊') {
@@ -81,15 +81,15 @@ const volumeControl = (reaction, user) => {
       }
     }
   }
-}
+} */
 
 const sendPlayInfo = (message, embed) => {
-  message.channel.send(embed).then(afterMess => {
+  message.channel.send(embed)/* .then(afterMess => {
     playMessage = afterMess
     playMessage.react('🔊')
     playMessage.react('🔉')
     playMessage.react('🔇')
-  })
+  }) */
 }
 
 const handlePlayMp3 = (message, playPara) => {
@@ -166,6 +166,12 @@ const playUrl = (message, plPara) => {
   })
 }
 
+const checkDiffVC = (message) => {
+  if(connection)
+    return message.member.voice.channel.id != connection.channel.id
+  return false
+} 
+
 const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
 
 const checkCmd = (message, cmd) => message.content.startsWith(cmd + ' ') || message.content == cmd
@@ -178,6 +184,7 @@ client.on('ready', () => {
   .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl)
   .on('messageCreate', async message => {
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
+        if(checkDiffVC(message)) return
         let plPara = cleanCmdParas(message)
         if(!plPara.length) {
           sendInValid(message)
@@ -193,6 +200,7 @@ client.on('ready', () => {
           playSearch(message, plPara)
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
+        if(checkDiffVC(message)) return
         let mp3Para = cleanCmdParas(message)
         if(!mp3Para.length) {
           sendInValid(message)
@@ -208,6 +216,7 @@ client.on('ready', () => {
       }
       // TODO: fix first time, not play but get queued
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}spk`)) {
+        if(checkDiffVC(message)) return
         let spkPara = cleanCmdParas(message)
         if(!spkPara.length) {
           sendInValid(message)
@@ -219,17 +228,24 @@ client.on('ready', () => {
         play()
       }
       if(checkCmd(message, `${process.env.COMMAND_PREFIX}skp`)) {
+        if(checkDiffVC(message)) return
         player.stop()
         play()
       }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pau`)) 
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pau`)) {
+        if(checkDiffVC(message)) return
         player.pause()
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}res`))
+      }
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}res`)) {
+        if(checkDiffVC(message)) return
         player.unpause()
+      }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}stp`)) {
+        if(checkDiffVC(message)) return
         stop()
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
+        if(checkDiffVC(message)) return
         const helpEmbed = new MessageEmbed()
         helpEmbed.setDescription(`
         $pl ***keyword***: search the ***keyword*** and play
