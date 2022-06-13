@@ -165,11 +165,15 @@ const playUrl = (message, plPara) => {
     playYt(data, message)
   })
 }
-
-const checkDiffVC = (message) => {
-  if(connection)
-    return message.member.voice.channel.id != connection.channel.id
-  return false
+//TODO: create every connection for every guild
+const isBotBusy = (message) => {
+  if(!connection) return false
+  if(connection.state.status === "destroyed") return false
+  let mesMemGId = message.guild.id
+  // let mesMemVCId = message.member.voice.channel.id
+  let plMemGId = connection.joinConfig.guildId
+  // let plMemVCId = connection.joinConfig.channelId
+  return mesMemGId != plMemGId
 } 
 
 const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
@@ -184,7 +188,7 @@ client.on('ready', () => {
   /* .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl) */
   .on('messageCreate', async message => {
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         let plPara = cleanCmdParas(message)
         if(!plPara.length) {
           sendInValid(message)
@@ -200,7 +204,7 @@ client.on('ready', () => {
           playSearch(message, plPara)
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         let mp3Para = cleanCmdParas(message)
         if(!mp3Para.length) {
           sendInValid(message)
@@ -216,7 +220,7 @@ client.on('ready', () => {
       }
       // TODO: fix first time, not play but get queued
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}spk`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         let spkPara = cleanCmdParas(message)
         if(!spkPara.length) {
           sendInValid(message)
@@ -228,24 +232,24 @@ client.on('ready', () => {
         play()
       }
       if(checkCmd(message, `${process.env.COMMAND_PREFIX}skp`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         player.stop()
         play()
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}pau`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         player.pause()
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}res`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         player.unpause()
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}stp`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         stop()
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
-        if(checkDiffVC(message)) return
+        if(isBotBusy(message)) return
         const helpEmbed = new MessageEmbed()
         helpEmbed.setDescription(`
         $pl ***keyword***: search the ***keyword*** and play
