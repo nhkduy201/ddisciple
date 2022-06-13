@@ -39,7 +39,7 @@ const stop = () => {
 
 const play = () => {
   if(player.state.status === AudioPlayerStatus.Idle && !queue.isEmpty) {
-    resource = createAudioResource(queue.dequeue()/* , { inlineVolume: true } */)
+    resource = createAudioResource(queue.dequeue())
     player.play(resource)
   } else if(player.state.status === AudioPlayerStatus.Idle) {
     stop()
@@ -47,49 +47,30 @@ const play = () => {
 }
 
 const initConnection = (message) => {
+  let channelId
+  if(message.member.voice.channel)
+    channelId = message.member.voice.channel.id
+  else {
+    let firstVoiceChannel = client.channels.cache.find(channel => channel.type === 'GUILD_VOICE')
+    if(firstVoiceChannel)
+      channelId = firstVoiceChannel.id
+    else
+      return false
+  }
   connection = joinVoiceChannel({
-    channelId: message.member.voice.channel.id,
+    channelId: channelId,
     guildId: message.guild.id,
     adapterCreator: message.guild.voiceAdapterCreator,
   })
   connection.subscribe(player)
+  return true
 }
 
 const sendInValid = (message) => message.channel.send('Invalid command!')
-
-/* const volumeControl = (reaction, user) => {
-  if (resource && resource.started && !resource.ended && playMessage
-    && user.id != client.user.id && reaction.message.id === playMessage.id) {
-    if (reaction.emoji.name === '🔊') {
-      if(resource.volume.volume + 0.25 <= 1) {
-        resource.volume.volume += 0.25
-        preVolume = null
-      }
-    }
-    if (reaction.emoji.name === '🔉') {
-      if(resource.volume.volume - 0.25 >= 0) {
-        resource.volume.volume -= 0.25
-        preVolume = null
-      }
-    }
-    if (reaction.emoji.name === '🔇') {
-      if (resource.volume.volume == 0) {
-          resource.volume.volume = preVolume || 0.25
-      } else {
-        preVolume = resource.volume.volume
-        resource.volume.volume = 0
-      }
-    }
-  }
-} */
+const sendConnectionError = (message) => message.channel.send('Connection error! If your server has no voice channel, please create one.')
 
 const sendPlayInfo = (message, embed) => {
-  message.channel.send(embed)/* .then(afterMess => {
-    playMessage = afterMess
-    playMessage.react('🔊')
-    playMessage.react('🔉')
-    playMessage.react('🔇')
-  }) */
+  message.channel.send(embed)
 }
 
 const handlePlayMp3 = (message, playPara) => {
@@ -118,7 +99,6 @@ const handleSpeak = async (message, playPara) => {
     urlPromises.push(sotClient.sounds.create({ text: playPara.substring(i, j), voice: 'vi-VN' }))
     i = j + 1
   }
-  // fix
   Promise.all(urlPromises).then(urls => {
     for(const url of urls) {
       queue.enqueue(got.stream(url))
@@ -170,9 +150,7 @@ const isBotBusy = (message) => {
   if(!connection) return false
   if(connection.state.status === "destroyed") return false
   let mesMemGId = message.guild.id
-  // let mesMemVCId = message.member.voice.channel.id
   let plMemGId = connection.joinConfig.guildId
-  // let plMemVCId = connection.joinConfig.channelId
   return mesMemGId != plMemGId
 } 
 
@@ -185,7 +163,6 @@ const bulkDelete = channelId => setInterval(() => client.channels.cache.get(chan
 client.on('ready', () => {
   console.log('client is ready')
 })
-  /* .on('messageReactionAdd', volumeControl).on('messageReactionRemove', volumeControl) */
   .on('messageCreate', async message => {
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
         if(isBotBusy(message)) return
@@ -195,10 +172,12 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection(message)
+          if(!initConnection(message)) {
+            sendConnectionError(message)
+            return
+          }
         if(plPara.includes('youtube.com/watch?v=')) {
             playUrl(message, plPara)
-            // message.delete()
         }
         else
           playSearch(message, plPara)
@@ -211,7 +190,10 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection(message)
+          if(!initConnection(message)) {
+            sendConnectionError(message)
+            return
+          }
         if(mp3Para.startsWith('http') && mp3Para.endsWith('.mp3'))
           handlePlayMp3(message, mp3Para)
         else
@@ -227,7 +209,10 @@ client.on('ready', () => {
           return
         }
         if (!connection || connection.state.status === 'destroyed')
-          initConnection(message)
+          if(!initConnection(message)) {
+            sendConnectionError(message)
+            return
+          }
         await handleSpeak(message, spkPara)
         play()
       }
