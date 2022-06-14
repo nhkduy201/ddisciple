@@ -23,8 +23,7 @@ let preVolume = 1
 let queue = new Queue()
 
 player.on('error',(err) => {
-  console.log(err.resource.playStream)
-  client.channels.cache.get(process.env.ERROR_CHANNEL_ID).send(JSON.stringify(err.resource.playStream))
+  console.log(JSON.stringify(err.resource.playStream, null, 2))
 })
 
 player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
@@ -158,8 +157,6 @@ const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' 
 
 const checkCmd = (message, cmd) => message.content.startsWith(cmd + ' ') || message.content == cmd
 
-const bulkDelete = channelId => setInterval(() => client.channels.cache.get(channelId).bulkDelete(100), 2000)
-
 client.on('ready', () => {
   console.log('client is ready')
 })
@@ -232,6 +229,18 @@ client.on('ready', () => {
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}stp`)) {
         if(isBotBusy(message)) return
         stop()
+      }
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrque`)) {
+        if(isBotBusy(message)) return
+        queue.clear()
+      }
+      if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrtxt`)) {
+        if(isBotBusy(message)) return
+        let hasPermission = message.guild.members.cache.get(client.user.id).permissions.has('MANAGE_MESSAGES')
+        if(hasPermission)
+          while((await message.channel.bulkDelete(100)).size) {}
+        else
+          message.channel.send('Can\'t use this command cause bot don\'t have this permission!')
       }
       if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
         if(isBotBusy(message)) return
