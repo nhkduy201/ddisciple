@@ -1,262 +1,399 @@
+//TODO: create every connection for every guild
 //TODO: do replay
-import runServer from './server.js'
-import usm from './user-send-message.js'
-import Queue from './queue.js'
-import got from 'got'
-import sotClient from 'soundoftext-js'
-import { Client, Intents, MessageEmbed } from 'discord.js'
-import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice'
-import dotenv from 'dotenv'
-import ytdl from 'ytdl-core'
-dotenv.config()
+//TODO: use youtube-sr instead of got the search url https://www.npmjs.com/package/youtube-sr
+//TODO: do rewind and forward the track
+import runServer from "./server.js";
+import usm from "./user-send-message.js";
+import Queue from "./queue.js";
+import ffmpegStatic from "ffmpeg-static";
+import { exec } from "child_process";
+import {
+  createReadStream,
+  createWriteStream,
+  unlinkSync,
+  existsSync,
+  writeFile,
+} from "fs";
+import got from "got";
+import sotClient from "soundoftext-js";
+// import { Client, Intents, MessageEmbed } from 'discord.js'
+import pkg from "discord.js";
+const { Client, GatewayIntentBits, MessageEmbed } = pkg;
+import {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+} from "@discordjs/voice";
+import dotenv from "dotenv";
+dotenv.config();
+import ytdl from "ytdl-core";
+import { default as YouTube } from "youtube-sr";
 const client = new Client({
-  intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES,
-     Intents.FLAGS.GUILD_MESSAGE_REACTIONS, Intents.FLAGS.GUILD_VOICE_STATES],
-  partials: ['MESSAGE', 'CHANNEL', 'REACTION']
-})
-let myUsm = usm.setToken(process.env.MY_TOKEN)
-let player = createAudioPlayer()
-let resource
-let connection
-let playMessage
-let preVolume = 1
-let queue = new Queue()
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildVoiceStates,
+  ],
+  partials: ["MESSAGE", "CHANNEL", "REACTION"],
+});
+const fullFile = "./full.mp3";
+const cutFile = "./cut.mp3";
+let myUsm = usm.setToken(process.env.MY_TOKEN);
+let player = createAudioPlayer();
+let curInfo;
+let connection;
+let startTime;
+let queue = new Queue();
 
-player.on('error',(err) => {
-  console.log(JSON.stringify(err.resource.playStream, null, 2))
-})
+client
+  .on("ready", () => {
+    console.log("client is ready");
+  })
+  .on("messageCreate", async (message) => {
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}p`)) {
+      if (isBotBusy(message)) return;
+      let plPara = cleanCmdParas(message);
+      if (!plPara.length) {
+        sendInValid(message);
+        return;
+      }
+      if (!connection || connection.state.status === "destroyed")
+        if (!initConnection(message)) {
+          sendConnectionError(message);
+          return;
+        }
+      sendMessage(message, "Loading...");
+      getPlayData(message, plPara);
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
+      if (isBotBusy(message)) return;
+      let mp3Para = cleanCmdParas(message);
+      if (!mp3Para.length) {
+        sendInValid(message);
+        return;
+      }
+      if (!connection || connection.state.status === "destroyed")
+        if (!initConnection(message)) {
+          sendConnectionError(message);
+          return;
+        }
+      if (mp3Para.startsWith("http") && mp3Para.endsWith(".mp3"))
+        handlePlayMp3(message, mp3Para);
+      else sendInValid(message);
+    }
+    // TODO: fix first time, not play but get queued
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}sp`)) {
+      if (isBotBusy(message)) return;
+      let spkPara = cleanCmdParas(message);
+      if (!spkPara.length) {
+        sendInValid(message);
+        return;
+      }
+      if (!connection || connection.state.status === "destroyed")
+        if (!initConnection(message)) {
+          sendConnectionError(message);
+          return;
+        }
+      await handleSpeak(message, spkPara);
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}sk`)) {
+      if (isBotBusy(message)) return;
+      player.stop();
+      play();
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}pa`)) {
+      if (isBotBusy(message)) return;
+      player.pause();
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}re`)) {
+      if (isBotBusy(message)) return;
+      player.unpause();
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}st`)) {
+      if (isBotBusy(message)) return;
+      stop();
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}in`)) {
+      if (isBotBusy(message)) return;
+      sendEmbed(message, curInfo);
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrque`)) {
+      if (isBotBusy(message)) return;
+      queue.clear();
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrtxt`)) {
+      if (isBotBusy(message)) return;
+      let hasPermission = message.guild.members.cache
+        .get(client.user.id)
+        .permissions.has("MANAGE_MESSAGES");
+      if (hasPermission) while ((await message.channel.bulkDelete(100)).size) {}
+      else
+        message.channel.send(
+          "Can't use this command cause bot don't have this permission!"
+        );
+    }
+    if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
+      if (isBotBusy(message)) return;
+      let helpEmbed = new MessageEmbed();
+      helpEmbed.setDescription(`
+        ${process.env.COMMAND_PREFIX}p ***keyword***: search the ***keyword*** and play
+        ${process.env.COMMAND_PREFIX}mp3 ***url***: play mp3 from ***url***
+        ${process.env.COMMAND_PREFIX}sp ***paragraph***: google translator speak ***paragraph***
+        ${process.env.COMMAND_PREFIX}sk: skip current track
+        ${process.env.COMMAND_PREFIX}pa: pause current track
+        ${process.env.COMMAND_PREFIX}re: resume current track
+        ${process.env.COMMAND_PREFIX}st: bot leave
+        ${process.env.COMMAND_PREFIX}in: show current track info
+        ${process.env.COMMAND_PREFIX}clrque: clear queue
+        ${process.env.COMMAND_PREFIX}clrtxt: clear all text in this channel
+        `);
+      message.channel.send({ embeds: [helpEmbed] });
+    }
+  })
+  .login(process.env.BOT_TOKEN);
 
-player.on(AudioPlayerStatus.Idle, (oldState, newState) => {
-  resource = undefined
-  play()
-})
+runServer();
 
-const stop = () => {
-  player.stop()
-  if (connection) connection.destroy()
+player
+  .on("error", (err) => {
+    writeFile("./error.log", JSON.stringify(err.resource.playStream, null, 2));
+  })
+  .on(AudioPlayerStatus.Idle, (oldState, newState) => {
+    play();
+  });
+
+async function getGifUrl() {
+  let gifObj = await got.get(
+    `https://api.giphy.com/v1/gifs/random?api_key=${process.env.GIPHY_API_KEY}`
+  );
+  return JSON.parse(gifObj.body).data.images.original.url;
 }
 
-const play = () => {
-  if(player.state.status === AudioPlayerStatus.Idle && !queue.isEmpty) {
-    resource = createAudioResource(queue.dequeue())
-    player.play(resource)
-  } else if(player.state.status === AudioPlayerStatus.Idle) {
-    stop()
+function sendError(error) {
+  client.channels.cache
+    .get("986311591484096582")
+    .send(JSON.stringify(error, null, 2));
+}
+
+function stop() {
+  player.stop();
+  if (connection) connection.destroy();
+}
+
+function play(message = null) {
+  if (player.state.status === AudioPlayerStatus.Idle && !queue.isEmpty) {
+    let next = queue.dequeue();
+    curInfo = next.info;
+    player.play(createAudioResource(next.stream));
+    if (message) {
+      sendEmbed(message, curInfo);
+    }
+  } else if (player.state.status === AudioPlayerStatus.Idle) {
+    stop();
   }
 }
 
-const initConnection = (message) => {
-  let channelId
-  if(message.member.voice.channel)
-    channelId = message.member.voice.channel.id
+function initConnection(message) {
+  let channelId;
+  if (message.member.voice.channel) channelId = message.member.voice.channel.id;
   else {
-    let firstVoiceChannel = client.channels.cache.find(channel => channel.type === 'GUILD_VOICE')
-    if(firstVoiceChannel)
-      channelId = firstVoiceChannel.id
-    else
-      return false
+    let firstVoiceChannel = client.channels.cache.find(
+      (channel) => channel.type === "GUILD_VOICE"
+    );
+    if (firstVoiceChannel) channelId = firstVoiceChannel.id;
+    else return false;
   }
   connection = joinVoiceChannel({
     channelId: channelId,
     guildId: message.guild.id,
     adapterCreator: message.guild.voiceAdapterCreator,
-  })
-  connection.subscribe(player)
-  return true
+  });
+  connection.subscribe(player);
+  return true;
 }
 
-const sendInValid = (message) => message.channel.send('Invalid command!')
-const sendConnectionError = (message) => message.channel.send('Connection error! If your server has no voice channel, please create one.')
-
-const sendPlayInfo = (message, embed) => {
-  message.channel.send(embed)
+function sendInValid(message) {
+  message.channel.send("Invalid command!");
+}
+function sendConnectionError(message) {
+  message.channel.send(
+    "Connection error! If your server has no voice channel, please create one."
+  );
 }
 
-const handlePlayMp3 = (message, playPara) => {
-  sendPlayInfo(playPara.substring(message, playPara.lastIndexOf('/') + 1))
-  queue.enqueue(got.stream(playPara))
+function sendEmbed(message, data) {
+  let embed = new MessageEmbed()
+    .setDescription(`**[${data.title}](${data.url})**`)
+    .setImage(data.image);
+  sendMessage(message, { embeds: [embed] });
 }
 
-const handleSpeak = async (message, playPara) => {
-  playPara = playPara.replace(new RegExp(process.env.SECRET_1, 'g'), decodeURI(process.env.SECRET_2))
-  .replace(new RegExp(process.env.SECRET_3, 'g'), decodeURI(process.env.SECRET_4))
-  sendPlayInfo(message, 'Speaking...')
-  let urlPromises = []
-  let i = 0
-  let j
-  while(true) {
-    j = i + 200
-    if(j >= playPara.length) {
-      urlPromises.push(sotClient.sounds.create({ text: playPara.substring(i), voice: 'vi-VN' }))
-      break
+function sendMessage(message, content) {
+  message.channel.send(content);
+}
+
+async function handlePlayMp3(message, playPara) {
+  let mp3FileName = playPara.substring(message, playPara.lastIndexOf("/") + 1);
+  let imgUrl = await getGifUrl();
+  queue.enqueue({
+    info: {
+      title: mp3FileName,
+      url: playPara,
+      image: imgUrl,
+    },
+    stream: got.stream(playPara),
+  });
+  play(message);
+}
+
+function shortenSpeakPara(para) {
+  if (para.length < 30) return para;
+  return (
+    para.substring(0, 10) +
+    "..." +
+    para.substring(para.length - 10, para.length)
+  );
+}
+
+async function handleSpeak(message, playPara) {
+  playPara = playPara
+    .replace(
+      new RegExp(process.env.SECRET_1, "g"),
+      decodeURI(process.env.SECRET_2)
+    )
+    .replace(
+      new RegExp(process.env.SECRET_3, "g"),
+      decodeURI(process.env.SECRET_4)
+    );
+  let urlPromises = [];
+  let i = 0;
+  let j;
+  let infos = [];
+  let txt;
+  while (true) {
+    j = i + 200;
+    if (j >= playPara.length) {
+      txt = playPara.substring(i);
+      urlPromises.push(sotClient.sounds.create({ text: txt, voice: "vi-VN" }));
+      infos.push(shortenSpeakPara(txt));
+      break;
     }
-    j = playPara.lastIndexOf(' ', j)
-    if(j == -1) {
-      j = playPara.length
-      continue
+    j = playPara.lastIndexOf(" ", j);
+    if (j == -1) {
+      j = playPara.length;
+      continue;
     }
-    urlPromises.push(sotClient.sounds.create({ text: playPara.substring(i, j), voice: 'vi-VN' }))
-    i = j + 1
+    txt = playPara.substring(i, j);
+    urlPromises.push(sotClient.sounds.create({ text: txt, voice: "vi-VN" }));
+    infos.push(shortenSpeakPara(txt));
+    i = j + 1;
   }
-  Promise.all(urlPromises).then(urls => {
-    for(const url of urls) {
-      queue.enqueue(got.stream(url))
+  let imgUrl = await getGifUrl();
+  Promise.all(urlPromises).then((urls) => {
+    for (const [idx, url] of urls.entries()) {
+      queue.enqueue({
+        info: {
+          title: infos[idx],
+          url: url,
+          image: imgUrl,
+        },
+        stream: got.stream(url),
+      });
     }
-    play()
-  })
+    play(message);
+  });
 }
 
-const playYt = (data, message) => {
-  let plEmbed = new MessageEmbed()
-  plEmbed.setDescription(`**[${data.title}](${data.url})**`)
-  plEmbed.setImage(data.image)
-  sendPlayInfo(message, {embeds: [plEmbed]})
-  queue.enqueue(ytdl(`${data.url}`, {quality: "lowestaudio",filter: 'audioonly'}))
-  play()
-}
-
-const playSearch = (message, plPara) => {
-  got(`https://www.youtube.com/results?search_query=${plPara.replaceAll(' ', '+')}`).then(res => {
-    const firPnt = "\"videoRenderer\""
-    const secPnt = ",\"longBylineText"
-    const start = res.body.indexOf(firPnt) + firPnt.length + 1
-    const end = res.body.indexOf(secPnt, start)
-    const rawData = JSON.parse(res.body.substring(start, end) + '}')
-    let data = {url: `https://www.youtube.com/watch?v=${rawData.videoId}`}
-    data = {
-      ...data, 
-      title: rawData.title.runs ? rawData.title.runs[0].text : rawData.title.simpleText,
-      image: rawData.thumbnail.thumbnails[rawData.thumbnail.thumbnails.length - 1].url
+function playYt(data, message) {
+  // if(!startTime) {
+  //   queue.enqueue({
+  //     info: data,
+  //     stream: ytdl(`${data.url}`, { quality:"lowestaudio", filter: "audioonly" })
+  //   })
+  //   play(message)
+  //   return
+  // }
+  if (existsSync(fullFile)) unlinkSync(fullFile);
+  if (existsSync(cutFile)) unlinkSync(cutFile);
+  let tmpFile = createWriteStream(fullFile);
+  ytdl(`${data.url}`, { quality: "lowestaudio", filter: "audioonly" }).pipe(
+    tmpFile
+  );
+  tmpFile.on("finish", () => {
+    if (startTime === undefined || startTime < 1) {
+      queue.enqueue({
+        info: data,
+        stream: createReadStream(fullFile),
+      });
+      play(message);
+      startTime = undefined;
+      return;
     }
-    playYt(data, message)
-  })
+    exec(
+      `${ffmpegStatic} -i ${fullFile} -ss ${startTime} -c copy -map 0:a -acodec libmp3lame ${cutFile}`,
+      (err, stdout, stderr) => {
+        if (err) {
+          sendError(err);
+          return;
+        }
+        queue.enqueue({
+          info: data,
+          stream: createReadStream(cutFile),
+        });
+        play(message);
+        startTime = undefined;
+      }
+    );
+  });
 }
 
-const playUrl = (message, plPara) => {
-  ytdl.getInfo(plPara).then(data => {
-    data = {
-      url: data.videoDetails.video_url,
-      title: data.videoDetails.title,
-      image: data.videoDetails.thumbnails[
-        data.videoDetails.thumbnails.length - 1
-      ].url
-    }
-    playYt(data, message)
-  })
+async function getPlayData(message, plPara) {
+  let videoData;
+  if (plPara.includes("youtube.com/watch?v="))
+    videoData = await YouTube.getVideo(plPara);
+  else videoData = (await YouTube.search(plPara, { limit: 1 }))[0];
+  if (startTime && startTime > videoData.duration / 1000) {
+    sendMessage(message, "Start time is greater than video duration!");
+    return;
+  }
+  let data = {
+    url: `https://www.youtube.com/watch?v=${videoData.id}`,
+    title: videoData.title,
+    image: videoData.thumbnail.url,
+  };
+  playYt(data, message);
 }
-//TODO: create every connection for every guild
-const isBotBusy = (message) => {
-  if(!connection) return false
-  if(connection.state.status === "destroyed") return false
-  let mesMemGId = message.guild.id
-  let plMemGId = connection.joinConfig.guildId
-  return mesMemGId != plMemGId
-} 
+function isBotBusy(message) {
+  if (!connection) return false;
+  if (connection.state.status === "destroyed") return false;
+  let mesMemGId = message.guild.id;
+  let plMemGId = connection.joinConfig.guildId;
+  return mesMemGId != plMemGId;
+}
 
-const cleanCmdParas = message => message.content.replace(/\s\s+/g, ' ').split(' ').splice(1).join(' ').trim()
+function cleanCmdParas(message) {
+  startTime = null;
+  if (checkCmd(message, `${process.env.COMMAND_PREFIX}p -s`)) {
+    startTime = parseInt(
+      message.content.replace(/\s\s+/g, " ").split(" ").splice(2, 1)[0]
+    );
+    return message.content
+      .replace(/\s\s+/g, " ")
+      .split(" ")
+      .splice(3)
+      .join(" ")
+      .trim();
+  }
+  return message.content
+    .replace(/\s\s+/g, " ")
+    .split(" ")
+    .splice(1)
+    .join(" ")
+    .trim();
+}
 
-const checkCmd = (message, cmd) => message.content.startsWith(cmd + ' ') || message.content == cmd
-
-client.on('ready', () => {
-  console.log('client is ready')
-})
-  .on('messageCreate', async message => {
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pl`)) {
-        if(isBotBusy(message)) return
-        let plPara = cleanCmdParas(message)
-        if(!plPara.length) {
-          sendInValid(message)
-          return
-        }
-        if (!connection || connection.state.status === 'destroyed')
-          if(!initConnection(message)) {
-            sendConnectionError(message)
-            return
-          }
-        if(plPara.includes('youtube.com/watch?v=')) {
-            playUrl(message, plPara)
-        }
-        else
-          playSearch(message, plPara)
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
-        if(isBotBusy(message)) return
-        let mp3Para = cleanCmdParas(message)
-        if(!mp3Para.length) {
-          sendInValid(message)
-          return
-        }
-        if (!connection || connection.state.status === 'destroyed')
-          if(!initConnection(message)) {
-            sendConnectionError(message)
-            return
-          }
-        if(mp3Para.startsWith('http') && mp3Para.endsWith('.mp3'))
-          handlePlayMp3(message, mp3Para)
-        else
-          sendInValid(message)
-        play()
-      }
-      // TODO: fix first time, not play but get queued
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}spk`)) {
-        if(isBotBusy(message)) return
-        let spkPara = cleanCmdParas(message)
-        if(!spkPara.length) {
-          sendInValid(message)
-          return
-        }
-        if (!connection || connection.state.status === 'destroyed')
-          if(!initConnection(message)) {
-            sendConnectionError(message)
-            return
-          }
-        await handleSpeak(message, spkPara)
-        play()
-      }
-      if(checkCmd(message, `${process.env.COMMAND_PREFIX}skp`)) {
-        if(isBotBusy(message)) return
-        player.stop()
-        play()
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}pau`)) {
-        if(isBotBusy(message)) return
-        player.pause()
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}res`)) {
-        if(isBotBusy(message)) return
-        player.unpause()
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}stp`)) {
-        if(isBotBusy(message)) return
-        stop()
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrque`)) {
-        if(isBotBusy(message)) return
-        queue.clear()
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrtxt`)) {
-        if(isBotBusy(message)) return
-        let hasPermission = message.guild.members.cache.get(client.user.id).permissions.has('MANAGE_MESSAGES')
-        if(hasPermission)
-          while((await message.channel.bulkDelete(100)).size) {}
-        else
-          message.channel.send('Can\'t use this command cause bot don\'t have this permission!')
-      }
-      if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
-        if(isBotBusy(message)) return
-        const helpEmbed = new MessageEmbed()
-        helpEmbed.setDescription(`
-        $pl ***keyword***: search the ***keyword*** and play
-        $mp3 ***url***: play mp3 from ***url***
-        $spk ***paragraph***: google translator speak ***paragraph***
-        $skp: skip current track
-        $pau: pause current track
-        $res: resume current track
-        $stp: bot leave
-        `)
-        message.channel.send({embeds: [helpEmbed]})
-      }
-  })
-  .login(process.env.BOT_TOKEN)
-
-runServer()
+function checkCmd(message, cmd) {
+  return message.content.startsWith(cmd + " ") || message.content == cmd;
+}
