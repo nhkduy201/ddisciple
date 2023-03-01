@@ -16,27 +16,34 @@ import {
 } from "fs";
 import got from "got";
 import sotClient from "soundoftext-js";
-// import { Client, Intents, MessageEmbed } from 'discord.js'
 import pkg from "discord.js";
-const { Client, GatewayIntentBits, MessageEmbed } = pkg;
+const { Client, GatewayIntentBits, Partials, ChannelType } = pkg;
 import {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
 } from "@discordjs/voice";
-import dotenv from "dotenv";
+import * as dotenv from "dotenv";
 dotenv.config();
 import ytdl from "ytdl-core";
 import { default as YouTube } from "youtube-sr";
+import { EmbedBuilder } from "@discordjs/builders";
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.MessageContent,
   ],
-  partials: ["MESSAGE", "CHANNEL", "REACTION"],
+  partials: [
+    Partials.User,
+    Partials.Channel,
+    Partials.GuildMember,
+    Partials.Message,
+    Partials.Reaction,
+  ],
 });
 const fullFile = "./full.mp3";
 const cutFile = "./cut.mp3";
@@ -66,8 +73,7 @@ client
         }
       sendMessage(message, "Loading...");
       getPlayData(message, plPara);
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}mp3`)) {
       if (isBotBusy(message)) return;
       let mp3Para = cleanCmdParas(message);
       if (!mp3Para.length) {
@@ -84,7 +90,7 @@ client
       else sendInValid(message);
     }
     // TODO: fix first time, not play but get queued
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}sp`)) {
+    else if (checkCmd(message, `${process.env.COMMAND_PREFIX}sp`)) {
       if (isBotBusy(message)) return;
       let spkPara = cleanCmdParas(message);
       if (!spkPara.length) {
@@ -97,33 +103,26 @@ client
           return;
         }
       await handleSpeak(message, spkPara);
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}sk`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}sk`)) {
       if (isBotBusy(message)) return;
       player.stop();
       play();
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}pa`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}pa`)) {
       if (isBotBusy(message)) return;
       player.pause();
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}re`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}re`)) {
       if (isBotBusy(message)) return;
       player.unpause();
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}st`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}st`)) {
       if (isBotBusy(message)) return;
       stop();
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}in`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}in`)) {
       if (isBotBusy(message)) return;
       sendEmbed(message, curInfo);
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrque`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrque`)) {
       if (isBotBusy(message)) return;
       queue.clear();
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrtxt`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}clrtxt`)) {
       if (isBotBusy(message)) return;
       let hasPermission = message.guild.members.cache
         .get(client.user.id)
@@ -133,10 +132,9 @@ client
         message.channel.send(
           "Can't use this command cause bot don't have this permission!"
         );
-    }
-    if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
+    } else if (checkCmd(message, `${process.env.COMMAND_PREFIX}help`)) {
       if (isBotBusy(message)) return;
-      let helpEmbed = new MessageEmbed();
+      let helpEmbed = new EmbedBuilder();
       helpEmbed.setDescription(`
         ${process.env.COMMAND_PREFIX}p ***keyword***: search the ***keyword*** and play
         ${process.env.COMMAND_PREFIX}mp3 ***url***: play mp3 from ***url***
@@ -150,6 +148,12 @@ client
         ${process.env.COMMAND_PREFIX}clrtxt: clear all text in this channel
         `);
       message.channel.send({ embeds: [helpEmbed] });
+    } else {
+      if (message.author.bot) return;
+      if (message.content.startsWith(process.env.COMMAND_PREFIX)) {
+        if (isBotBusy(message)) return;
+        message.channel.send("Invalid command!");
+      }
     }
   })
   .login(process.env.BOT_TOKEN);
@@ -173,7 +177,7 @@ async function getGifUrl() {
 
 function sendError(error) {
   client.channels.cache
-    .get("986311591484096582")
+    .get(process.env.ERROR_CHANNEL_ID)
     .send(JSON.stringify(error, null, 2));
 }
 
@@ -200,7 +204,7 @@ function initConnection(message) {
   if (message.member.voice.channel) channelId = message.member.voice.channel.id;
   else {
     let firstVoiceChannel = client.channels.cache.find(
-      (channel) => channel.type === "GUILD_VOICE"
+      (channel) => channel.type === ChannelType.GuildVoice
     );
     if (firstVoiceChannel) channelId = firstVoiceChannel.id;
     else return false;
@@ -224,7 +228,7 @@ function sendConnectionError(message) {
 }
 
 function sendEmbed(message, data) {
-  let embed = new MessageEmbed()
+  let embed = new EmbedBuilder()
     .setDescription(`**[${data.title}](${data.url})**`)
     .setImage(data.image);
   sendMessage(message, { embeds: [embed] });
@@ -307,14 +311,17 @@ async function handleSpeak(message, playPara) {
 }
 
 function playYt(data, message) {
-  // if(!startTime) {
-  //   queue.enqueue({
-  //     info: data,
-  //     stream: ytdl(`${data.url}`, { quality:"lowestaudio", filter: "audioonly" })
-  //   })
-  //   play(message)
-  //   return
-  // }
+  if (!startTime) {
+    queue.enqueue({
+      info: data,
+      stream: ytdl(`${data.url}`, {
+        quality: "lowestaudio",
+        filter: "audioonly",
+      }),
+    });
+    play(message);
+    return;
+  }
   if (existsSync(fullFile)) unlinkSync(fullFile);
   if (existsSync(cutFile)) unlinkSync(cutFile);
   let tmpFile = createWriteStream(fullFile);
